@@ -1,0 +1,253 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Apr 25 12:37:32 2018
+
+@author: Karl, PK, Tejas, Saurabh
+"""
+
+import numpy as np
+import tensorflow as tf
+import pickle
+import time
+import os
+from os import walk
+import nibabel as nib
+import sys
+import glob
+from scipy.io import loadmat
+from scipy.io import savemat
+import matplotlib.pyplot as plt
+import re
+#from definitions import *
+
+
+def maxpool2dWrap(x, k=2):
+# MaxPool2D wrapper
+    return tf.nn.max_pool(x, ksize=[1, k, k, 1], strides=[1, k, k, 1], padding='SAME')
+
+
+def conv2dWrap(x, W, b, strides=1):
+    # Conv2D wrapper, with bias and relu activation
+    x = tf.nn.conv2d(x, W, strides=[1, strides, strides, 1], padding='SAME', data_format='NHWC')
+    x = tf.nn.bias_add(x, b)
+    return tf.nn.relu(x)
+
+
+def conv2dTransWrap(x, W, b, shape, strides=[1,2,2,1]):
+    x = tf.nn.conv2d_transpose(x, W, shape, strides, padding='SAME')
+    x = tf.nn.bias_add(x,b)
+    return x
+
+def outWrap(x, W, b, strides=1):
+    # Conv2D wrapper, with bias and relu activation
+    x = tf.nn.conv2d(x, W, strides=[1, strides, strides, 1], padding='SAME', data_format='NHWC')
+    x = tf.nn.bias_add(x, b)
+    return(x)
+
+
+outFile=open('NNresults.txt','w')    
+outDict={}
+gsDict={}
+
+launch=os.getcwd()
+
+valDir = '/Users/praitayinikanakaraj/Desktop/Validation'
+
+
+def uNet(x,weights,biases):
+    #L1
+    conv0  = conv2dWrap(x, weights['wConv0'], biases['bConv0'])
+    conv1  = conv2dWrap(conv0, weights['wConv1'], biases['bConv1'])
+    conv2  = conv2dWrap(conv1, weights['wConv2'], biases['bConv2'])
+    conv2p  = maxpool2dWrap(conv2)
+    print(conv2p.shape)
+
+    #L2
+    conv3  = conv2dWrap(conv2p, weights['wConv3'], biases['bConv3'])
+    conv3_new  = conv2dWrap(conv3, weights['wConv3_new'], biases['bConv3_new'])
+    conv4  = conv2dWrap(conv3_new, weights['wConv4'], biases['bConv4'])
+    conv4p = maxpool2dWrap(conv4)
+    print(conv4p.shape)
+
+    #L3
+    conv5  = conv2dWrap(conv4p, weights['wConv5'], biases['bConv5'])
+    conv5_new  = conv2dWrap(conv5, weights['wConv5_new'], biases['bConv5_new'])
+    conv6  = conv2dWrap(conv5_new, weights['wConv6'], biases['bConv6'])
+    conv6p = maxpool2dWrap(conv6)
+    print(conv6p.shape)
+
+    #l4
+    conv7  = conv2dWrap(conv6p, weights['wConv7'], biases['bConv7'])
+    conv7_new  = conv2dWrap(conv7, weights['wConv7_new'], biases['bConv7_new'])
+    conv8  = conv2dWrap(conv7_new, weights['wConv8'], biases['bConv8'])
+    conv8p = maxpool2dWrap(conv8)
+    print(conv8p.shape)
+
+    #L5
+    conv9       = conv2dWrap(conv8p, weights['wConv9'], biases['bConv9'])
+    conv10      = conv2dWrap(conv9, weights['wConv10'], biases['bConv10'])
+    conv10_new  = conv2dWrap(conv10, weights['wConv10_new'], biases['bConv10_new'])
+    conv10_new2  = conv2dWrap(conv10_new, weights['wConv10_new2'], biases['bConv10_new2'])
+
+    #L4
+    convT1  = conv2dTransWrap(conv10_new2,weights['wT1'], biases['bT1'],[1,28,32,256])
+    conv11  = conv2dWrap(tf.concat([convT1,conv8],3), weights['wConv11'], biases['bConv11'])
+    conv12  = conv2dWrap(conv11, weights['wConv12'], biases['bConv12'])
+
+    #L3
+    convT2  = conv2dTransWrap(conv12,weights['wT2'], biases['bT2'],[1,56,64,128])
+    conv13  = conv2dWrap(tf.concat([convT2,conv6],3), weights['wConv13'], biases['bConv13'])
+    conv14  = conv2dWrap(conv13, weights['wConv14'], biases['bConv14'])
+
+    #L2
+    convT3  = conv2dTransWrap(conv14,weights['wT3'], biases['bT3'],[1,112,128,64])
+    conv15  = conv2dWrap(tf.concat([convT3,conv4],3), weights['wConv15'], biases['bConv15'])
+    conv16  = conv2dWrap(conv15, weights['wConv16'], biases['bConv16'])
+
+    #L1
+    convT4  = conv2dTransWrap(conv16,weights['wT4'], biases['bT4'],[1,224,256,32])
+    conv17  = conv2dWrap(tf.concat([convT4,conv2],3), weights['wConv17'], biases['bConv17'])
+    conv18  = conv2dWrap(conv17, weights['wConv18'], biases['bConv18'])
+
+
+    convOUT = outWrap(conv18,weights['wOUT'], biases['bOUT'])
+    print(convOUT.shape)
+    return convOUT
+
+
+
+
+# Store layers weight &amp; bias
+
+sess = tf.Session()
+x = tf.placeholder(dtype=tf.float32, shape=[1,224,256,1])
+new_saver = tf.train.import_meta_graph('/Users/praitayinikanakaraj/PseudoOUT/model.meta')
+new_saver.restore(sess,tf.train.latest_checkpoint('/Users/praitayinikanakaraj/PseudoOUT/'))
+
+weights = {
+'wConv0': sess.run('wC0:0'),
+'wConv1':  sess.run('wC1:0'),
+'wConv2':  sess.run('wC2:0'),
+'wConv3':  sess.run('wC3:0'),
+'wConv3_new':  sess.run('wC3_new:0'),
+'wConv4':  sess.run('wC4:0'),
+'wConv5':  sess.run('wC5:0'),
+'wConv5_new':  sess.run('wC5_new:0'),
+'wConv6':  sess.run('wC6:0'),
+'wConv7':  sess.run('wC7:0'),
+'wConv7_new':  sess.run('wC7_new:0'),
+'wConv8':  sess.run('wC8:0'),
+'wConv9':  sess.run('wC9:0'),
+'wConv10':  sess.run('wC10:0'),
+'wConv10_new':  sess.run('wC10_new:0'),
+'wConv10_new2':  sess.run('wC10_new2:0'),
+'wConv11':  sess.run('wC11:0'),
+'wConv12':  sess.run('wConv12:0'),
+'wConv13':  sess.run('wConv13:0'),
+'wConv14':  sess.run('wConv14:0'),
+'wConv15':  sess.run('wConv15:0'),
+'wConv16':  sess.run('wConv16:0'),
+'wConv17':  sess.run('wConv17:0'),
+'wConv18':  sess.run('wConv18:0'),
+'wOUT'  :  sess.run('wOUT:0'),
+'wT4':  sess.run('wT4:0'),
+'wT3':  sess.run('wT3:0'),
+'wT2':  sess.run('wT2:0'),
+'wT1': sess.run('wT1:0')
+}
+biases = {
+'bConv0': sess.run('bConv0:0'),
+'bConv1': sess.run('bConv1:0'),
+'bConv2': sess.run('bConv2:0'),
+'bConv3': sess.run('bConv3:0'),
+'bConv3_new':  sess.run('bConv3_new:0'),
+'bConv4': sess.run('bConv4:0'),
+'bConv5': sess.run('bConv5:0'),
+'bConv5_new':  sess.run('bConv5_new:0'),
+'bConv6': sess.run('bConv6:0'),
+'bConv7': sess.run('bConv7:0'),
+'bConv7_new':  sess.run('bConv7_new:0'),
+'bConv8': sess.run('bConv8:0'),
+'bConv9': sess.run('bConv9:0'),
+'bConv10': sess.run('bConv10:0'),
+'bConv10_new':  sess.run('bConv10_new:0'),
+'bConv10_new2':  sess.run('bConv10_new2:0'),
+'bConv11': sess.run('bConv11:0'),
+'bConv12': sess.run('bConv12:0'),
+'bConv13': sess.run('bConv13:0'),
+'bConv14': sess.run('bConv14:0'),
+'bConv15': sess.run('bConv15:0'),
+'bConv16':  sess.run('bConv16:0'),
+'bConv17':  sess.run('bConv17:0'),
+'bConv18':  sess.run('bConv18:0'),
+'bOUT'  :  sess.run('bOUT:0'),
+'bT4':  sess.run('bT4:0'),
+'bT3':  sess.run('bT3:0'),
+'bT2':  sess.run('bT2:0'),
+'bT1': sess.run('bT1:0')
+}
+
+tf.reset_default_graph()
+pred = uNet(x, weights, biases)  
+
+print("Loaded Weights")
+
+valListMRI = []
+
+for dirpath, dirnames, filenames in walk(valDir):
+    for file in filenames:
+        if re.match(r'\d{6}\.hdr',file):
+            p = os.path.join(dirpath, file)
+            valListMRI.append(p)
+
+counter=0
+for pid in valListMRI[0]:
+    print(pid)
+    data=nib.load(valListMRI[counter-2])
+    data=data.get_data()
+    print(data)
+    mri=data
+    #mri=mri.dataobj[:,:,:,0:2]
+    print(mri.shape)
+    #labels=nib.load(trainListLabel[counter])
+    
+    #labels=labels.get_data()
+    #print(trainListLabel[counter])
+    print(valListMRI[counter])
+    #labels=labels['roi_mat']
+    #mlabels=1-labels
+    mri  =  np.expand_dims(mri, 0)
+    mri  =  np.expand_dims(mri, -1)
+    os.chdir(launch)
+
+    t0=time.time()
+
+    b=np.zeros((224,256))
+    b_all=b
+    b_all=np.expand_dims(b_all,-1)
+    
+    for zSlice in range(mri.shape[3]):
+        print(zSlice)
+    #    mask=labels[:,:,zSlice] #1-hot tumor
+     #   mask=np.expand_dims(mask, 0)
+     #   mask=np.expand_dims(mask, -1)
+        #mask[mask==0]=0.01
+        #mask2=np.ndarray.flatten(mlabels[:,:,zSlice]) #1-hot normal tissue
+        #mask=np.concatenate((mask,mask2),axis=-1)
+        b = sess.run([pred], feed_dict = {x: mri[:,:,:,zSlice,:]})
+        b=b[0]
+        b=np.expand_dims(b,-1)
+        b_all=np.concatenate((b_all,b[0,:,:,0]),-1)
+    counter+=1
+        
+
+
+
+
+
+
+
+
+
+
