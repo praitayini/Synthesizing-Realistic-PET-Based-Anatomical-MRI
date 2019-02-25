@@ -1,6 +1,6 @@
 # Synthesizing-Realistic-PET-Based-Anatomical-MRI
 
-More images are created to improve the accuracy of PET based Computer Aided Diagnosis (CAD). If these CAD systems have more data to work with the better they will diagnose patients. These CAD systems have machine learning techniques build into them but they just need a larger sample size to learn. 
+The accuracy of PET based Computer Aided Diagnosis (CAD) can be  improved when more images are feed into these systems. If these CAD systems have more data to work with, the better it will diagnose patients. These CAD systems have machine learning techniques build into them. The accuracy of these machine learning algorithms depend on the amount of training data. Here, new PET images are constructed which can be added to the training set.
 
 The main.py is implementation of U-net convolutional neural network. This network reads in MRI scan images from the training data set and learns how to transform them into PET scan images. The network then returns the data layers that should be applied to the MRI images to transform them into PET scan images. 
 
